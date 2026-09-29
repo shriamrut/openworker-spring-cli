@@ -17,12 +17,14 @@
     "eventsource": "^5.1.1",
     "inquirer": "^14.2.0",
     "ora": "^9.4.1",
-    "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
+    "tsx": "^4.23.12"
   },
   "devDependencies": {
     "@types/eventsource": "^1.1.15",
-    "@types/inquirer": "^9.0.10"
+    "@types/inquirer": "^9.0.10",
+    "ts-loader": "^9.6.2",
+    "typescript": "^7.0.2",
+    "webpack-cli": "^7.2.3"
   },
   "type": "module"
 }

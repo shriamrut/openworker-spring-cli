@@ -22,8 +22,42 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
 
-    - name: Build
+    - name: Install Dependencies & Setup Configs
       run: |
         npm install
-        npm install --save-dev webpack-cli
-        npx webpack
+        npm install --save-dev webpack-cli typescript ts-loader
+        
+        # Create a basic tsconfig.json if it doesn't exist
+        if [ ! -f tsconfig.json ]; then
+          npx tsc --init
+        fi
+
+        # Create webpack.config.cjs (.cjs forces CommonJS mode)
+        cat << 'EOF' > webpack.config.cjs
+        const path = require('path');
+
+        module.exports = {
+          mode: 'production',
+          entry: './src/index.ts',
+          module: {
+            rules: [
+              {
+                test: /\.tsx?$/,
+                use: 'ts-loader',
+                exclude: /node_modules/,
+              },
+            ],
+          },
+          resolve: {
+            extensions: ['.tsx', '.ts', '.js'],
+          },
+          output: {
+            filename: 'bundle.js',
+            path: path.resolve(__dirname, 'dist'),
+          },
+        };
+        EOF
+
+    - name: Build
+      run: |
+        npx webpack --config webpack.config.cjs

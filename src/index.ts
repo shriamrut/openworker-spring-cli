@@ -31,6 +31,7 @@ import {
   getSession,
   deleteSession,
   updateMode,
+  submitPermissionDecision,
   streamTurn,
   AgentMode,
   BASE_URL,
@@ -41,6 +42,7 @@ import {
   printSessionTable,
   printSessionDetail,
   renderAgentEvent,
+  promptToolApproval,
   printError,
   printSuccess,
   printInfo,
@@ -121,7 +123,7 @@ async function runChat() {
     const mode = await select<AgentMode>({
       message: "Agent mode:",
       choices: [
-        { name: "DISCUSS  – Read-only, LLM explores and discusses", value: "DISCUSS" },
+        { name: "DISCUSS  – Interactive discussion; asks user for tool use", value: "DISCUSS" },
         { name: "PLAN     – Read-only, LLM designs a strategy", value: "PLAN" },
         { name: "FULL     – Write & shell execution enabled", value: "FULL" },
       ],
@@ -161,12 +163,14 @@ async function runChat() {
   console.log();
 
   // ── REPL loop ──────────────────────────────────────────────────────────────
-  const rl = readline.createInterface({ input: process.stdin, terminal: false });
-
   const readLine = (): Promise<string> =>
     new Promise((resolve) => {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
       process.stdout.write(chalk.cyan.bold("\n▶ You: "));
-      rl.once("line", resolve);
+      rl.once("line", (line) => {
+        rl.close();
+        resolve(line);
+      });
     });
 
   while (true) {
@@ -206,14 +210,26 @@ async function runChat() {
     console.log();
     try {
       for await (const event of streamTurn(sessionId!, userInput, currentMode)) {
-        renderAgentEvent(event);
+        if (event.type === "PERMISSION_REQUIRED" && event.toolCallId) {
+          const approved = await promptToolApproval(event.toolName, event.content);
+          try {
+            await submitPermissionDecision(sessionId!, event.toolCallId, approved);
+            if (approved) {
+              printInfo(`Permission granted for ${event.toolName ?? "tool"}`);
+            } else {
+              printInfo(`Permission denied for ${event.toolName ?? "tool"}`);
+            }
+          } catch (err: unknown) {
+            printError(`Failed to submit permission decision: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        } else {
+          renderAgentEvent(event);
+        }
       }
     } catch (err: unknown) {
       printError(err instanceof Error ? err.message : String(err));
     }
   }
-
-  rl.close();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

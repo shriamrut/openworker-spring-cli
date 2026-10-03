@@ -3,6 +3,7 @@
  */
 
 import chalk from "chalk";
+import { confirm } from "@inquirer/prompts";
 import type { AgentEvent, SessionSummary, SessionDetail } from "./api.js";
 
 // ── Brand colours ────────────────────────────────────────────────────────────
@@ -125,6 +126,15 @@ export function renderAgentEvent(event: AgentEvent) {
           (event.content ? "\n" + muted("     " + event.content) : "")
       );
       break;
+    case "TOOL_RESULT":
+      if (event.content) {
+        const preview =
+          event.content.length > 200
+            ? event.content.slice(0, 200) + "…"
+            : event.content;
+        console.log(muted("     ⮑ Result: " + preview));
+      }
+      break;
     case "PERMISSION_REQUIRED":
       console.log(
         "\n" + danger.bold("  ⚠  Permission required: ") + bright(event.content ?? "")
@@ -137,6 +147,22 @@ export function renderAgentEvent(event: AgentEvent) {
       console.log("\n" + danger.bold("  ✗ Error: ") + bright(event.content ?? ""));
       break;
   }
+}
+
+export async function promptToolApproval(
+  toolName: string | null,
+  content: string | null
+): Promise<boolean> {
+  console.log();
+  console.log(warn.bold("  ⚠  Tool Approval Required (DISCUSS mode)"));
+  console.log(bright.bold("     Tool     : ") + brand.bold(toolName ?? "unknown"));
+  if (content) {
+    console.log(bright.bold("     Arguments: ") + muted(content));
+  }
+  return await confirm({
+    message: `Allow agent to execute '${toolName ?? "tool"}'?`,
+    default: true,
+  });
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────

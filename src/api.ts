@@ -36,6 +36,7 @@ export type AgentEventType =
   | "STARTED"
   | "NARRATION"
   | "TOOL_CALL"
+  | "TOOL_RESULT"
   | "PERMISSION_REQUIRED"
   | "COMPLETED"
   | "ERROR";
@@ -87,6 +88,16 @@ export async function updateMode(
     { mode }
   );
   return data;
+}
+
+export async function submitPermissionDecision(
+  sessionId: string,
+  toolCallId: string,
+  approved: boolean
+): Promise<void> {
+  await http.post(`/api/sessions/${sessionId}/permissions/${toolCallId}`, {
+    approved,
+  });
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

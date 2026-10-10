@@ -32,6 +32,7 @@ import {
   deleteSession,
   updateMode,
   submitPermissionDecision,
+  haltTurn,
   streamTurn,
   AgentMode,
   BASE_URL,
@@ -75,6 +76,9 @@ switch (command) {
     break;
   case "mode":
     await runSetMode(args[1], args[2] as AgentMode);
+    break;
+  case "halt":
+    await runHalt(args[1]);
     break;
   default:
     printHelp();
@@ -156,7 +160,9 @@ async function runChat() {
       "  Special commands:\n" +
       "    /mode <DISCUSS|PLAN|FULL>  – switch agent mode\n" +
       "    /history                   – view message history\n" +
-      "    /exit                      – quit"
+      "    /exit                      – quit\n" +
+      "  Tip: Press Ctrl+X while the agent is running to halt the turn.\n" +
+      "       Press Ctrl+C to quit the CLI."
     )
   );
   printDivider();
@@ -193,6 +199,11 @@ async function runChat() {
       continue;
     }
 
+    if (userInput === "/halt" || userInput === "/stop") {
+      printInfo("No active turn to halt.");
+      continue;
+    }
+
     if (userInput.startsWith("/mode ")) {
       const newMode = userInput.split(" ")[1]?.toUpperCase() as AgentMode;
       if (!["DISCUSS", "PLAN", "FULL"].includes(newMode)) {
@@ -208,10 +219,41 @@ async function runChat() {
 
     // ── Stream turn ───────────────────────────────────────────────────────────
     console.log();
+    const abortController = new AbortController();
+    let isHalted = false;
+
+    // Enable raw mode so we can intercept Ctrl+X without exiting the process.
+    const wasRaw = process.stdin.isRaw ?? false;
+    if (process.stdin.isTTY) {
+      readline.emitKeypressEvents(process.stdin);
+      process.stdin.setRawMode(true);
+    }
+
+    const keypressHandler = (_: unknown, key: { sequence: string; ctrl: boolean; name: string }) => {
+      if (!key) return;
+      if (key.sequence === "\x18") {
+        // Ctrl+X → halt the active turn
+        if (!isHalted) {
+          isHalted = true;
+          process.stdout.write(chalk.hex("#F59E0B").bold("\n\n  ■ Halting conversation…\n"));
+          haltTurn(sessionId!).catch(() => {});
+          abortController.abort();
+        }
+      } else if (key.sequence === "\x03") {
+        // Ctrl+C → restore tty and exit as normal
+        if (process.stdin.isTTY) process.stdin.setRawMode(wasRaw);
+        process.exit(0);
+      }
+    };
+
+    if (process.stdin.isTTY) {
+      process.stdin.on("keypress", keypressHandler);
+    }
+
     try {
-      for await (const event of streamTurn(sessionId!, userInput, currentMode)) {
+      for await (const event of streamTurn(sessionId!, userInput, currentMode, abortController.signal)) {
         if (event.type === "PERMISSION_REQUIRED" && event.toolCallId) {
-          const approved = await promptToolApproval(event.toolName, event.content);
+          const approved = await promptToolApproval(event.toolName ?? undefined, event.content ?? undefined);
           try {
             await submitPermissionDecision(sessionId!, event.toolCallId, approved);
             if (approved) {
@@ -227,7 +269,14 @@ async function runChat() {
         }
       }
     } catch (err: unknown) {
-      printError(err instanceof Error ? err.message : String(err));
+      if (!isHalted && !(err instanceof Error && (err.name === "AbortError" || err.message.includes("aborted")))) {
+        printError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (process.stdin.isTTY) {
+        process.stdin.off("keypress", keypressHandler);
+        process.stdin.setRawMode(wasRaw);
+      }
     }
   }
 }
@@ -293,6 +342,21 @@ async function runSetMode(sessionId?: string, mode?: AgentMode) {
   }
 }
 
+async function runHalt(sessionId?: string) {
+  if (!sessionId) {
+    printError("Usage: npm start -- halt <sessionId>");
+    return;
+  }
+  const spinner = ora(`Halting turn for session ${sessionId}…`).start();
+  try {
+    await haltTurn(sessionId);
+    spinner.succeed(`Turn halted for session ${sessionId}.`);
+  } catch (err: unknown) {
+    spinner.fail("Failed to halt session.");
+    printError(err instanceof Error ? err.message : String(err));
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────────────────────────────
@@ -313,6 +377,7 @@ function printHelp() {
     history <id>                  View message history
     delete <id>                   Delete a session
     mode <id> <DISCUSS|PLAN|FULL> Change agent mode
+    halt <id>                     Halt an active agent turn
 
   Flags (for chat):
     --session, -s <id>            Resume a specific session

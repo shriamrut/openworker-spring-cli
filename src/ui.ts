@@ -143,26 +143,13 @@ export function renderAgentEvent(event: AgentEvent) {
     case "COMPLETED":
       console.log("\n\n" + success.bold("  ✓ Done") + "\n");
       break;
+    case "HALTED":
+      console.log("\n\n" + warn.bold("  ■ Conversation halted by user") + "\n");
+      break;
     case "ERROR":
       console.log("\n" + danger.bold("  ✗ Error: ") + bright(event.content ?? ""));
       break;
   }
-}
-
-export async function promptToolApproval(
-  toolName: string | null,
-  content: string | null
-): Promise<boolean> {
-  console.log();
-  console.log(warn.bold("  ⚠  Tool Approval Required (DISCUSS mode)"));
-  console.log(bright.bold("     Tool     : ") + brand.bold(toolName ?? "unknown"));
-  if (content) {
-    console.log(bright.bold("     Arguments: ") + muted(content));
-  }
-  return await confirm({
-    message: `Allow agent to execute '${toolName ?? "tool"}'?`,
-    default: true,
-  });
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────
@@ -183,4 +170,23 @@ export function printSuccess(msg: string) {
 
 export function printInfo(msg: string) {
   console.log(brand("  ℹ ") + bright(msg));
+}
+
+// ── DISCUSS-mode tool approval prompt ─────────────────────────────────────────
+
+export async function promptToolApproval(
+  toolName: string | undefined,
+  content: string | undefined
+): Promise<boolean> {
+  console.log();
+  console.log(warn.bold("  ⚠  Tool approval required"));
+  console.log(warn("  Tool : ") + bright(toolName ?? "unknown"));
+  if (content) {
+    console.log(warn("  Args : ") + muted(content));
+  }
+  console.log();
+  return confirm({
+    message: danger.bold("Allow this tool call?"),
+    default: false,
+  });
 }

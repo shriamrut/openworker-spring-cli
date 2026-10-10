@@ -39,7 +39,8 @@ export type AgentEventType =
   | "TOOL_RESULT"
   | "PERMISSION_REQUIRED"
   | "COMPLETED"
-  | "ERROR";
+  | "ERROR"
+  | "HALTED";
 
 export interface AgentEvent {
   type: AgentEventType;
@@ -100,6 +101,18 @@ export async function submitPermissionDecision(
   });
 }
 
+export async function haltTurn(sessionId: string): Promise<void> {
+  try {
+    await http.post(`/api/sessions/${sessionId}/halt`);
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      return;
+    }
+    throw err;
+  }
+}
+
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Turn streaming (SSE via native fetch)
 // ──────────────────────────────────────────────────────────────────────────────
@@ -110,7 +123,8 @@ export async function submitPermissionDecision(
 export async function* streamTurn(
   sessionId: string,
   prompt: string,
-  mode?: AgentMode
+  mode?: AgentMode,
+  signal?: AbortSignal
 ): AsyncGenerator<AgentEvent> {
   const url = `${BASE_URL}/api/sessions/${sessionId}/turns`;
 
@@ -121,6 +135,7 @@ export async function* streamTurn(
       Accept: "text/event-stream",
     },
     body: JSON.stringify({ prompt, mode }),
+    signal,
   });
 
   if (!response.ok || !response.body) {
